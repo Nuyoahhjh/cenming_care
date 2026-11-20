@@ -70,4 +70,4 @@ workflows:
           ls -lh
     artifacts:
       - build/ios/ipa/*.ipa
-      - build/ios/archive/*.xcarchive
+      - build/ios/iphoneos/Runner.app
