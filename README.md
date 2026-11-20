@@ -49,14 +49,16 @@ dist\cenming-care-v1.0.3-release.apk
 
 ## Codemagic 云构建
 
-仓库根目录的 `codemagic.yaml` 提供两条流水线：
+仓库根目录的 `codemagic.yaml` 只保留 iOS 流水线（Android 请在本机构建）：
 
 | 工作流 | 产物 | 说明 |
 |---|---|---|
-| `android-apk` | `app-release.apk` | Linux 构建，可直接下载安装 |
 | `ios-ipa` | `cenming-care-unsigned.ipa` | macOS 构建，未签名，需自备签名才能装真机 |
 
 在 Codemagic 应用设置页点击 "Check for configuration files" 即可识别。
+
+Codemagic 免费额度只覆盖 macOS M2 实例（500 分钟/月），Linux 机型需付费，
+因此 Android 构建不在云端执行，避免误触发消耗额度。
 
 需要可直接安装到 iPhone 的 IPA 时，在 Codemagic 中补齐三项后把 `ios-ipa` 改为签名构建：
 
