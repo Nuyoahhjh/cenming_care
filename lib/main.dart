@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 const String kHomeUrl = 'https://c.my-gun.top/';
 const Color kBrandColor = Color(0xFF0D7D72);
@@ -23,7 +25,7 @@ const Set<String> _externalSchemes = {
   'iosamap',
 };
 
-const List<_PermissionItem> _permissionItems = [
+const List<_PermissionItem> _androidPermissionItems = [
   _PermissionItem(
     icon: Icons.location_on_outlined,
     title: '定位',
@@ -61,6 +63,38 @@ const List<_PermissionItem> _permissionItems = [
     permission: Permission.contacts,
   ),
 ];
+
+const List<_PermissionItem> _iosPermissionItems = [
+  _PermissionItem(
+    icon: Icons.location_on_outlined,
+    title: '定位',
+    description: '签到、服务地点校验',
+    permission: Permission.locationWhenInUse,
+  ),
+  _PermissionItem(
+    icon: Icons.camera_alt_outlined,
+    title: '相机',
+    description: '现场拍照、水印留证',
+    permission: Permission.camera,
+  ),
+  _PermissionItem(
+    icon: Icons.mic_none_rounded,
+    title: '麦克风',
+    description: '视频服务、语音沟通',
+    permission: Permission.microphone,
+  ),
+  _PermissionItem(
+    icon: Icons.photo_library_outlined,
+    title: '照片',
+    description: '保存与选择现场照片',
+    permission: Permission.photos,
+  ),
+];
+
+List<_PermissionItem> get _permissionItems =>
+    defaultTargetPlatform == TargetPlatform.iOS
+    ? _iosPermissionItems
+    : _androidPermissionItems;
 
 // Android WebView gives <button> align-items: flex-start, which collapses the
 // site's empty-span hamburger bars to zero width. Restore the intended layout.
@@ -229,7 +263,12 @@ class _WebViewPageState extends State<WebViewPage> {
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController();
+    _controller = WebViewController.fromPlatformCreationParams(
+      _buildControllerParams(),
+      onPermissionRequest: (request) {
+        unawaited(_handleWebPermissionRequest(request.platform));
+      },
+    );
     unawaited(_configureWebView());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(
@@ -237,6 +276,51 @@ class _WebViewPageState extends State<WebViewPage> {
         _maybePromptForPermissions,
       );
     });
+  }
+
+  PlatformWebViewControllerCreationParams _buildControllerParams() {
+    const base = PlatformWebViewControllerCreationParams();
+    if (WebViewPlatform.instance is WebKitWebViewPlatform) {
+      return WebKitWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+        base,
+        allowsInlineMediaPlayback: true,
+        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+      );
+    }
+    if (WebViewPlatform.instance is AndroidWebViewPlatform) {
+      return AndroidWebViewControllerCreationParams.fromPlatformWebViewControllerCreationParams(
+        base,
+      );
+    }
+    return base;
+  }
+
+  Future<void> _handleWebPermissionRequest(
+    PlatformWebViewPermissionRequest request,
+  ) async {
+    final required = <Permission>[
+      if (request.types.contains(WebViewPermissionResourceType.camera))
+        Permission.camera,
+      if (request.types.contains(WebViewPermissionResourceType.microphone))
+        Permission.microphone,
+    ];
+    var allowed = true;
+    if (required.isNotEmpty) {
+      final currentStatuses = await Future.wait(
+        required.map((permission) => permission.status),
+      );
+      allowed = currentStatuses.every((status) => status.isGranted);
+      if (!allowed) {
+        final requested = await required.request();
+        allowed = requested.values.every((status) => status.isGranted);
+      }
+    }
+    if (allowed) {
+      await request.grant();
+    } else {
+      await request.deny();
+      _showMessage('需要相机或麦克风权限才能拍照、录像或语音通话');
+    }
   }
 
   Future<void> _configureWebView() async {
@@ -307,8 +391,18 @@ class _WebViewPageState extends State<WebViewPage> {
     final platform = _controller.platform;
     if (platform is AndroidWebViewController) {
       await _configureAndroidWebView(platform);
+    } else if (platform is WebKitWebViewController) {
+      await _configureIosWebView();
     }
     _loadHomePage();
+  }
+
+  Future<void> _configureIosWebView() async {
+    final platform = _controller.platform;
+    if (platform is! WebKitWebViewController) {
+      return;
+    }
+    await platform.setAllowsBackForwardNavigationGestures(true);
   }
 
   Future<void> _configureAndroidWebView(
@@ -325,29 +419,7 @@ class _WebViewPageState extends State<WebViewPage> {
       },
     );
     await controller.setOnPlatformPermissionRequest((request) async {
-      final required = <Permission>[
-        if (request.types.contains(WebViewPermissionResourceType.camera))
-          Permission.camera,
-        if (request.types.contains(WebViewPermissionResourceType.microphone))
-          Permission.microphone,
-      ];
-      var allowed = true;
-      if (required.isNotEmpty) {
-        final currentStatuses = await Future.wait(
-          required.map((permission) => permission.status),
-        );
-        allowed = currentStatuses.every((status) => status.isGranted);
-        if (!allowed) {
-          final requested = await required.request();
-          allowed = requested.values.every((status) => status.isGranted);
-        }
-      }
-      if (allowed) {
-        await request.grant();
-      } else {
-        await request.deny();
-        _showMessage('需要相机或麦克风权限才能拍照、录像或语音通话');
-      }
+      await _handleWebPermissionRequest(request);
     });
     await controller.setOnShowFileSelector(_pickImageForWebView);
   }
