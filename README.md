@@ -47,6 +47,25 @@ dist\cenming-care-v1.0.3-release.apk
 - 后续升级必须继续使用同一份 keystore，请单独备份。
 - 如需更换签名，修改 `android/key.properties` 后重新构建。
 
+## Codemagic 云构建
+
+仓库根目录的 `codemagic.yaml` 提供两条流水线：
+
+| 工作流 | 产物 | 说明 |
+|---|---|---|
+| `android-apk` | `app-release.apk` | Linux 构建，可直接下载安装 |
+| `ios-ipa` | `cenming-care-unsigned.ipa` | macOS 构建，未签名，需自备签名才能装真机 |
+
+在 Codemagic 应用设置页点击 "Check for configuration files" 即可识别。
+
+需要可直接安装到 iPhone 的 IPA 时，在 Codemagic 中补齐三项后把 `ios-ipa` 改为签名构建：
+
+1. 上传 Apple 分发证书（.p12）与描述文件
+2. 添加 App Store Connect API Key 集成
+3. 将构建命令改为 `flutter build ipa --release` 并使用 `xcode-project use-profiles`
+
+Apple 免费个人账号签发的应用 7 天过期，正式分发建议使用付费开发者账号。
+
 ## 功能
 
 - 固定入口加载岑茗养老官网
